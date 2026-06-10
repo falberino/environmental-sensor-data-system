@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Local environment
+.env
+
+# Generated pipeline outputs
+outputs/*.json
+outputs/*.jsonl
+outputs/*.log
+
+# Data
+data/iot_telemetry_data.csv
+data/*.zip
+
+# Docker/local database files
+mongo-data/
+
+# OS/editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Submission package
+environmental-sensor-data-system-submission.zip
