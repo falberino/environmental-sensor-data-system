@@ -1,401 +1,80 @@
 # Environmental Sensor Data System
 
-A recoverable batch-loading system for environmental IoT sensor data. The project reads CSV telemetry in checkpoints, stores readings in MongoDB with explicit data-quality metadata, and supports validation and example queries for city environmental monitoring workflows.
+A Docker-based, recoverable batch ingestion system for environmental IoT sensor telemetry. The project loads CSV sensor readings into MongoDB, stores explicit data-quality metadata, supports checkpoint-based recovery, and provides validation and example queries for environmental monitoring use cases.
 
-**GitHub:** https://github.com/falberino/environmental-sensor-data-system
-
-```bash
-git clone https://github.com/falberino/environmental-sensor-data-system.git
-cd environmental-sensor-data-system
-```
+**Repository:** https://github.com/falberino/environmental-sensor-data-system
 
 ---
 
-## Purpose of the System
+## Project Purpose
 
-This system supports **city environmental monitoring** using historical IoT sensor telemetry. Public agencies, analysts, and engineers need reliable stored readings for:
+This project was developed for the Model Engineering portfolio as a reproducible local data pipeline. The system supports a city environmental monitoring scenario in which analysts, maintenance staff, and dashboard developers need reliable historical sensor data.
 
-- **Air-quality monitoring** — smoke, CO, LPG, temperature, humidity
-- **Alerting** — identifying unusually high readings by device and time
-- **Maintenance** — detecting silent devices or flaky measurements
-- **Future dashboards and APIs** — stable document schema with quality metadata
+The stored data can support questions such as:
 
-The MongoDB collection `city_environment.sensor_measurements` is designed for queries such as:
+- Which devices reported high smoke, CO, or LPG values?
+- Which sensors stopped reporting data?
+- Which devices produce sparse or unusually dense readings?
+- Which records contain invalid or missing measurements?
+- Did a batch load finish successfully, fail, or resume from a checkpoint?
 
-- High smoke / CO / LPG readings in a time window
-- Devices with no recent data, also called silent sensors
-- Sparse vs dense sampling per device
-- Documents with invalid or missing measurements through `quality.flags`
-- Recovery state after a failed or partial batch load
-
-This is **batch processing**, not real-time streaming. CSV files are loaded in configurable chunks with checkpointing so operators do not need to process the entire file in one run.
+The project focuses on **batch ingestion**, **data quality**, **failure recovery**, and **database validation**. It is not a real-time streaming system and does not include a web dashboard.
 
 ---
 
-## What this project does
+## Main Features
 
-1. Starts MongoDB in Docker.
-2. Creates indexes on `city_environment.sensor_measurements`.
-3. Loads CSV data in **recoverable batches** using checkpoints and retries.
-4. Tracks data quality consequences, including rejected rows, quality flags, and reports.
-5. Validates the load by checking schema, quality fields, device density, and null counts.
-6. Runs example queries that could support dashboards, alert lists, and maintenance checks.
-
-No web UI is included. This repository focuses on storage, batch loading, quality tracking, validation, and querying.
-
----
-
-## User Stories
-
-Role-based stories with acceptance criteria and data consequences are documented here:
-
-- [docs/user_stories.md](docs/user_stories.md)
-
-The user stories cover:
-
-- Environmental operations analyst
-- Public health or safety analyst
-- Sensor maintenance technician
-- Dashboard/API developer
-- Data engineer operating the batch pipeline
-
-These stories explain how people would use the database and what happens when data is missing, wrong, too sparse, too dense, too variable, or when a batch load fails.
+- Local MongoDB database using Docker Compose
+- Python batch loader for CSV telemetry data
+- Configurable batch size
+- Checkpoint file for stop-and-resume processing
+- MongoDB retry handling during batch writes
+- Deterministic document IDs to avoid duplicate inserts
+- Explicit data-quality flags for invalid measurements
+- Rejected-row logging for invalid identity fields
+- Validation script for schema, quality, device density, and null values
+- Example MongoDB queries for monitoring and maintenance use cases
+- Automated tests for transformation and checkpoint behavior
 
 ---
 
 ## Dataset
 
-| | |
-|---|---|
-| **Name** | Environmental Sensor Telemetry Data |
-| **Kaggle** | https://www.kaggle.com/datasets/garystafford/environmental-sensor-data-132k |
-| **Columns** | `ts`, `device`, `co`, `humidity`, `light`, `lpg`, `motion`, `smoke`, `temp` |
+The repository includes a reproducible sample dataset:
 
-### Included in the repository
-
-`data/sample_iot_telemetry_data.csv` — 10,000 rows, approximately 1.5 MB.
-
-This sample file is the default dataset for Docker, `.env.example`, loading, validation, and example queries.
-
-### Full dataset
-
-`data/iot_telemetry_data.csv` — approximately 59 MB and around 405k rows.
-
-The full dataset is optional and should be kept local only. It should not be uploaded to GitHub. To use the full dataset, download it from Kaggle and set this value in `.env`:
-
-```env
-DATA_FILE=data/iot_telemetry_data.csv
+```text
+data/sample_iot_telemetry_data.csv
 ```
 
-See [data/README.md](data/README.md) for more detail.
+The sample contains environmental IoT telemetry with the following columns:
+
+```text
+ts, device, co, humidity, light, lpg, motion, smoke, temp
+```
+
+The original dataset is the Environmental Sensor Telemetry Data dataset from Kaggle:
+
+```text
+https://www.kaggle.com/datasets/garystafford/environmental-sensor-data-132k
+```
+
+Only the sample CSV is included in the submitted repository so the project remains lightweight and reproducible.
 
 ---
 
 ## Why MongoDB
 
-Each sensor reading is stored as one document with nested `measurements` and `quality` objects. MongoDB fits this coursework prototype because:
+Each sensor reading is represented naturally as one document. MongoDB is suitable for this prototype because:
 
-- The document shape matches one sensor reading per CSV row.
-- Docker Compose can run MongoDB without requiring a local database installation.
-- Batch upserts with deterministic `_id` values make reloads idempotent.
-- Aggregation pipelines support alert, monitoring, validation, and maintenance queries.
-- The schema can be extended with quality flags without redesigning relational tables.
-
----
-
-## Prerequisites
-
-- Docker
-- Docker Compose
-- Python 3.11 or newer, only needed for local testing or creating the submission ZIP
-
-The sample CSV is included for quick tests. A new sample can also be generated with:
-
-```bash
-python scripts/create_sample_data.py
-```
+- Each reading can store nested `measurements` and `quality` fields.
+- The schema can be extended with quality metadata.
+- Deterministic `_id` values and upserts make repeated batch runs idempotent.
+- Aggregation queries can support monitoring, validation, and alert-style use cases.
+- Docker Compose allows MongoDB to run locally without manual installation.
 
 ---
 
-## Setup
-
-```bash
-git clone https://github.com/falberino/environmental-sensor-data-system.git
-cd environmental-sensor-data-system
-cp .env.example .env
-```
-
-The `.env.example` file is committed to the repository. The `.env` file is local only and should not be uploaded.
-
----
-
-## Recommended Phase 3 demonstration: partial batch + resume
-
-This is the **main demonstration** for the portfolio submission. It proves that the system processes only a small part of the CSV, stops intentionally, saves a checkpoint, and continues later without reprocessing earlier successful batches.
-
-```bash
-docker compose down -v
-docker compose up -d mongodb
-docker compose ps   # wait until mongodb is healthy
-
-docker compose run --rm app python scripts/init_db.py
-
-# First run: process only two batches and stop successfully
-docker compose run --rm app python scripts/load_data.py --reset-checkpoint --max-batches 2
-
-# Second run: resume from the checkpoint and process two more batches
-docker compose run --rm app python scripts/load_data.py --max-batches 2
-
-# Validate and query the stored data
-docker compose run --rm app python scripts/validate_data.py
-docker compose run --rm app python scripts/example_queries.py
-
-# Run tests inside the Docker app container
-docker compose run --rm app pytest tests/ -v
-```
-
-After the first load command, inspect:
-
-```text
-outputs/load_checkpoint.json
-```
-
-The checkpoint should show that the last successful batch is batch 2. The second load command should skip batches 1 and 2 and continue with the next unprocessed batch.
-
-Step-by-step evidence guide:
-
-- [docs/run_evidence.md](docs/run_evidence.md)
-
----
-
-## Optional: full sample load
-
-Use this only when you want to load the complete sample dataset without demonstrating the stop-and-resume behavior.
-
-```bash
-docker compose down -v
-docker compose up -d mongodb
-docker compose ps   # wait until mongodb is healthy
-
-docker compose run --rm app python scripts/init_db.py
-docker compose run --rm app python scripts/load_data.py --reset-checkpoint
-docker compose run --rm app python scripts/validate_data.py
-docker compose run --rm app python scripts/example_queries.py
-```
-
----
-
-## Optional: full pipeline service
-
-The full pipeline can also be executed through the `pipeline` service:
-
-```bash
-docker compose up --build pipeline
-```
-
-This starts the pipeline container and runs initialization, loading, validation, and example queries in sequence.
-
----
-
-## Recoverable Batch Processing
-
-The loader processes CSV rows in batches. The default batch size is 1000 rows. After each **successful** MongoDB write, the loader saves a checkpoint to:
-
-```text
-outputs/load_checkpoint.json
-```
-
-| CLI flag | Purpose |
-|---|---|
-| `--max-batches N` | Process only N new batches during this run, then stop successfully. |
-| `--reset-checkpoint` | Start from batch 1 and clear the previous checkpoint and invalid-row log. |
-| `--checkpoint-path PATH` | Use a custom checkpoint file. The default is `outputs/load_checkpoint.json`. |
-
-Each batch prints:
-
-- Batch number
-- Rows read
-- Documents built
-- Invalid rows
-- Rows with quality flags
-- Inserted/updated document counts
-- Checkpoint location
-
-Details:
-
-- [docs/batch_design.md](docs/batch_design.md)
-
----
-
-## How to resume after failure
-
-If a batch write fails after retries:
-
-- The checkpoint is **not** advanced.
-- The failure is logged to `outputs/load_failures.json`.
-- The current batch can be retried by running the loader again.
-- Completed batches are skipped because the checkpoint records the last successful batch.
-
-```bash
-docker compose run --rm app python scripts/load_data.py
-```
-
-See:
-
-- [docs/failure_handling.md](docs/failure_handling.md)
-
----
-
-## Data Quality Rules and Consequences
-
-The transformation logic is implemented in:
-
-```text
-scripts/load_data.py
-```
-
-| Case | Behavior |
-|---|---|
-| Missing or invalid `ts` | Row is rejected and logged to `outputs/invalid_rows.jsonl`. |
-| Missing or invalid `device` | Row is rejected and logged to `outputs/invalid_rows.jsonl`. |
-| Invalid numeric measurement | Measurement is stored as `null` and a quality flag is added. |
-| Invalid boolean measurement | Measurement is stored as `null` and a quality flag is added. |
-| Valid row | Row is stored with `quality.is_valid`, `quality.flags`, and `quality.invalid_measurement_count`. |
-| Duplicate reading | Deterministic `_id` and MongoDB upsert prevent duplicate documents. |
-| Sparse device data | Device can be flagged during validation as potentially silent or unreliable. |
-| Dense device data | Device can be flagged as unusually frequent or potentially misconfigured. |
-| Highly varying data | Values can be reviewed as potential real events or sensor issues. |
-
-Reports generated by the loader:
-
-| File | Purpose |
-|---|---|
-| `outputs/data_quality_report.json` | Cumulative data quality counts and consequences. |
-| `outputs/invalid_rows.jsonl` | Rejected rows with rejection reasons. |
-| `outputs/load_summary.json` | Summary of the loading run. |
-
-Full rules:
-
-- [docs/data_quality_rules.md](docs/data_quality_rules.md)
-
----
-
-## Failure Handling
-
-Failure handling covers:
-
-- MongoDB unavailable at startup
-- MongoDB write failure during a batch
-- Disk full
-- Missing CSV file
-- Invalid rows
-- Schema mismatch
-- Partial batch failure
-- Checkpoint mismatch after changing the source file
-
-The key recovery rule is:
-
-> A checkpoint is advanced only after a batch is written successfully.
-
-This means a failed batch can be retried safely during the next run.
-
-See:
-
-- [docs/failure_handling.md](docs/failure_handling.md)
-
----
-
-## Expected outputs after running scripts
-
-Generated output files are stored in the `outputs/` folder. They are regenerated each run and are not required in the submission ZIP.
-
-| File | Created by |
-|---|---|
-| `outputs/load_summary.json` | `load_data.py` |
-| `outputs/load_checkpoint.json` | `load_data.py` |
-| `outputs/data_quality_report.json` | `load_data.py` |
-| `outputs/invalid_rows.jsonl` | `load_data.py` |
-| `outputs/load_failures.json` | `load_data.py`, only when a write failure occurs |
-| `outputs/validation_summary.json` | `validate_data.py` |
-| `outputs/example_query_results.json` | `example_queries.py` |
-
-The repository should keep only `outputs/README.md` by default. Generated JSON, JSONL, and log files should not be uploaded unless specifically needed as run evidence.
-
----
-
-## Configuration
-
-| Variable | Default |
-|---|---|
-| `MONGO_HOST` | `mongodb` |
-| `MONGO_PORT` | `27017` |
-| `MONGO_DB` | `city_environment` |
-| `MONGO_COLLECTION` | `sensor_measurements` |
-| `DATA_FILE` | `data/sample_iot_telemetry_data.csv` |
-| `BATCH_SIZE` | `1000` |
-
-The default `MONGO_HOST=mongodb` is intended for Docker Compose. If running scripts directly from the host machine, use:
-
-```env
-MONGO_HOST=localhost
-```
-
----
-
-## Tests
-
-Run tests inside Docker:
-
-```bash
-docker compose run --rm app pytest tests/ -v
-```
-
-Or run tests locally:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-pytest tests/ -v
-```
-
-The tests cover:
-
-- Invalid timestamp rejection
-- Invalid measurement quality flags
-- Stable deterministic `_id` generation
-- Checkpoint resume/reset behavior
-
----
-
-## Local validation commands
-
-Before uploading or submitting the repository, run:
-
-```bash
-python -m py_compile scripts/*.py
-python -m py_compile tests/*.py
-docker compose config
-```
-
-Then run:
-
-```bash
-docker compose down -v
-docker compose up -d mongodb
-docker compose run --rm app python scripts/init_db.py
-docker compose run --rm app python scripts/load_data.py --reset-checkpoint --max-batches 2
-docker compose run --rm app python scripts/load_data.py --max-batches 2
-docker compose run --rm app python scripts/validate_data.py
-docker compose run --rm app python scripts/example_queries.py
-docker compose run --rm app pytest tests/ -v
-docker compose down
-```
-
----
-
-## Project layout
+## Repository Structure
 
 ```text
 environmental-sensor-data-system/
@@ -436,86 +115,266 @@ environmental-sensor-data-system/
 
 ---
 
-## Files that should not be uploaded
+## Prerequisites
 
-Before uploading the project manually to GitHub, make sure these files and folders are not included:
+Required:
 
-```text
-.env
-.venv/
-venv/
-__pycache__/
-.pytest_cache/
-*.pyc
-data/iot_telemetry_data.csv
-data/*.zip
-outputs/*.json
-outputs/*.jsonl
-outputs/*.log
-mongo-data/
-environmental-sensor-data-system-submission.zip
-```
+- Docker
+- Docker Compose
 
-The repository should include the sample CSV, not the full dataset archive.
+Optional for local testing outside Docker:
+
+- Python 3.11 or newer
+- `pip`
 
 ---
 
-## Submission ZIP
+## Setup
 
-Create a clean submission ZIP with:
+Clone the repository and create the local environment file:
 
 ```bash
-python scripts/create_submission_zip.py
+git clone https://github.com/falberino/environmental-sensor-data-system.git
+cd environmental-sensor-data-system
+cp .env.example .env
 ```
 
-This creates:
+The `.env.example` file contains the default Docker configuration. The `.env` file is local and is not required in the submitted repository.
+
+---
+
+## Recommended Reproduction: Partial Batch + Resume
+
+This is the main demonstration for the portfolio submission. It proves that the pipeline does not need to process the whole CSV file in one run. Instead, it can process a small number of batches, stop, save a checkpoint, and continue later.
+
+```bash
+docker compose down -v
+docker compose build app
+docker compose up -d mongodb
+docker compose ps
+```
+
+Initialize the database:
+
+```bash
+docker compose run --rm app python scripts/init_db.py
+```
+
+Run the first partial batch load:
+
+```bash
+docker compose run --rm app python scripts/load_data.py --reset-checkpoint --max-batches 2
+```
+
+Inspect the checkpoint:
+
+```bash
+python3 -m json.tool outputs/load_checkpoint.json
+```
+
+The checkpoint should show that the first two batches were completed.
+
+Run the loader again without resetting the checkpoint:
+
+```bash
+docker compose run --rm app python scripts/load_data.py --max-batches 2
+```
+
+Inspect the checkpoint again:
+
+```bash
+python3 -m json.tool outputs/load_checkpoint.json
+```
+
+The checkpoint should now show that the loader continued from the previous state and advanced to the next completed batches.
+
+---
+
+## Validation and Example Queries
+
+After loading data, validate the database contents:
+
+```bash
+docker compose run --rm app python scripts/validate_data.py
+```
+
+Run example queries:
+
+```bash
+docker compose run --rm app python scripts/example_queries.py
+```
+
+These scripts demonstrate that the stored data can support environmental monitoring, alert investigation, and sensor-maintenance use cases.
+
+---
+
+## Automated Tests
+
+Run the tests inside the Docker application container:
+
+```bash
+docker compose run --rm app pytest tests/ -v
+```
+
+The tests cover:
+
+- Invalid timestamp rejection
+- Invalid measurement quality flags
+- Stable deterministic document IDs
+- Checkpoint reset and resume behavior
+
+---
+
+## Recoverable Batch Processing
+
+The loader processes rows in batches. The default batch size is configured in `.env.example`:
 
 ```text
-environmental-sensor-data-system-submission.zip
+BATCH_SIZE=1000
 ```
 
-The ZIP script should exclude:
+The batch loader supports:
 
-- Local environment files
-- Python cache files
-- Full datasets
-- ZIP archives
-- Generated output JSON/JSONL/log files
-- Local Docker database files
-
----
-
-## Limitations
-
-- The project uses public Kaggle sample data, not a live city sensor network.
-- The system performs batch loading only, not real-time streaming.
-- MongoDB runs locally through Docker Compose and is not configured as a cloud production database.
-- Alert thresholds in the example queries are demonstration thresholds.
-- No dashboard or graphical user interface is included.
-- The system stores and validates data for later use by dashboards, analysts, or APIs.
-
----
-
-## Troubleshooting
-
-| Problem | Try |
+| Flag | Purpose |
 |---|---|
-| CSV not found | Run `python scripts/create_sample_data.py` or use the included sample file. |
-| MongoDB connection error | Run `docker compose up -d mongodb` and wait until the service is healthy. |
-| Stale document count | Run `docker compose down -v` and reload with `--reset-checkpoint`. |
-| Checkpoint file mismatch | Use `--reset-checkpoint` after changing the source CSV. |
-| Load failed mid-batch | Re-run `load_data.py` without reset so the failed batch is retried. |
-| Docker Compose config error | Run `docker compose config` and check YAML indentation. |
-| Tests fail locally | Run tests inside Docker with `docker compose run --rm app pytest tests/ -v`. |
+| `--max-batches N` | Processes only N new batches and then stops successfully. |
+| `--reset-checkpoint` | Clears previous progress and starts again from the first batch. |
+| `--checkpoint-path PATH` | Uses a custom checkpoint location. |
+
+A checkpoint is written only after a MongoDB batch write succeeds. If a batch fails, the checkpoint is not advanced, so the same batch can be retried during the next run.
+
+Detailed explanation:
+
+```text
+docs/batch_design.md
+```
+
+---
+
+## Data Quality Rules
+
+The loader does not silently ignore invalid data. It applies explicit quality rules:
+
+| Data issue | System behavior |
+|---|---|
+| Missing or invalid timestamp | Row is rejected. |
+| Missing or invalid device ID | Row is rejected. |
+| Invalid numeric measurement | Value is stored as `null` and a quality flag is added. |
+| Invalid boolean measurement | Value is stored as `null` and a quality flag is added. |
+| Valid row | Row is stored with quality metadata. |
+| Duplicate reading | Deterministic `_id` and MongoDB upsert prevent duplicate documents. |
+
+Each stored document contains a quality section similar to:
+
+```json
+{
+  "quality": {
+    "is_valid": true,
+    "flags": [],
+    "invalid_measurement_count": 0
+  }
+}
+```
+
+Detailed explanation:
+
+```text
+docs/data_quality_rules.md
+```
+
+---
+
+## Failure Handling
+
+The project documents how the system reacts to common failure situations:
+
+- MongoDB unavailable
+- MongoDB write failure
+- Disk or storage problem
+- Missing CSV file
+- Invalid rows
+- Schema mismatch
+- Partial batch failure
+- Checkpoint mismatch
+
+The main recovery rule is:
+
+> The checkpoint is advanced only after a batch is written successfully.
+
+This allows the operator to rerun the loader and continue from the last successful batch.
+
+Detailed explanation:
+
+```text
+docs/failure_handling.md
+```
+
+---
+
+## Generated Runtime Outputs
+
+The following files are generated locally when the pipeline runs:
+
+```text
+outputs/load_summary.json
+outputs/load_checkpoint.json
+outputs/data_quality_report.json
+outputs/invalid_rows.jsonl
+outputs/load_failures.json
+outputs/validation_summary.json
+outputs/example_query_results.json
+```
+
+These files are runtime artifacts. They are useful as evidence after executing the pipeline, but they are not part of the clean submitted repository.
 
 ---
 
 ## Documentation
 
-- [User stories](docs/user_stories.md)
-- [Batch design](docs/batch_design.md)
-- [Data quality rules](docs/data_quality_rules.md)
-- [Failure handling](docs/failure_handling.md)
-- [Phase 3 run evidence](docs/run_evidence.md)
-- [Submission text](docs/development_phase_submission_text.md)
-- [Dataset notes](data/README.md)
+Additional documentation is provided in the `docs/` folder:
+
+| File | Purpose |
+|---|---|
+| `docs/user_stories.md` | Explains who uses the system and why. |
+| `docs/batch_design.md` | Describes checkpointing, retries, idempotency, and resume behavior. |
+| `docs/data_quality_rules.md` | Explains data-quality handling and consequences. |
+| `docs/failure_handling.md` | Explains how the system reacts to operational failures. |
+| `docs/run_evidence.md` | Contains the reproduction commands and evidence plan. |
+| `docs/development_phase_submission_text.md` | Short written explanation for the portfolio submission. |
+
+---
+
+## Submission ZIP
+
+A clean submission ZIP can be created with:
+
+```bash
+python3 scripts/create_submission_zip.py
+```
+
+The ZIP is designed to include source code, Docker configuration, documentation, tests, and the sample dataset.
+
+---
+
+## Limitations
+
+- The dataset is a public sample dataset, not a live city sensor network.
+- The system performs batch ingestion only, not real-time streaming.
+- MongoDB runs locally through Docker Compose.
+- Example query thresholds are demonstration values.
+- No graphical dashboard or web interface is included.
+- The system prepares and validates data for future dashboard, API, or analytics use.
+
+---
+
+## Troubleshooting
+
+| Problem | Suggested action |
+|---|---|
+| MongoDB is not reachable | Run `docker compose up -d mongodb` and wait until it is healthy. |
+| Docker Compose error | Run `docker compose config` and check the YAML file. |
+| CSV file not found | Confirm that `data/sample_iot_telemetry_data.csv` exists. |
+| Old document counts appear | Run `docker compose down -v` before a clean reproduction test. |
+| Loader resumes from an old state | Use `--reset-checkpoint` for a fresh run. |
+| A batch fails | Fix the issue and rerun the loader without resetting the checkpoint. |
+| Tests fail locally | Run the tests inside Docker with `docker compose run --rm app pytest tests/ -v`. |
