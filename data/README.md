@@ -1,48 +1,61 @@
-# Data folder
+# Data Folder
 
-## Included in the repository (submission)
+This folder contains the sample dataset used to reproduce the environmental sensor data system.
 
-```
-data/sample_iot_telemetry_data.csv
-```
+## Included Dataset
 
-- About **1.5 MB**, **10,000 rows** from the full Kaggle file  
-- Same columns: `ts`, `device`, `co`, `humidity`, `light`, `lpg`, `motion`, `smoke`, `temp`  
-- Used by default (`DATA_FILE=data/sample_iot_telemetry_data.csv`)  
-- Enough to test Docker, loading, validation, and queries after cloning  
-
-Regenerate from your full local CSV:
-
-```bash
-python scripts/create_sample_data.py
-python scripts/create_sample_data.py -n 5000   # smaller sample if needed
+```text
+sample_iot_telemetry_data.csv
 ```
 
----
+This CSV file is the default input for the Docker-based batch ingestion pipeline. It allows the project to be executed locally without downloading any additional data.
 
-## Full dataset (local only, not in Git/ZIP)
+## Dataset Content
 
+The file contains environmental IoT sensor telemetry with the following columns:
+
+| Column | Description |
+|---|---|
+| `ts` | Unix timestamp of the sensor reading |
+| `device` | Sensor device identifier |
+| `co` | Carbon monoxide measurement |
+| `humidity` | Humidity measurement |
+| `light` | Light measurement |
+| `lpg` | Liquefied petroleum gas measurement |
+| `motion` | Motion sensor value |
+| `smoke` | Smoke measurement |
+| `temp` | Temperature measurement |
+
+## Use in the Project
+
+The sample dataset is loaded by:
+
+```text
+scripts/load_data.py
 ```
-data/iot_telemetry_data.csv
+
+The default file path is configured in:
+
+```text
+.env.example
 ```
 
-- **Environmental Sensor Telemetry Data** — https://www.kaggle.com/datasets/garystafford/environmental-sensor-data-132k  
-- The Kaggle download archive may be named `Enviromental Sensor Telemetry Data.zip` (misspelled). Extract `iot_telemetry_data.csv` from it. The GitHub repository name is correctly spelled **environmental-sensor-data-system**.
-- About **59 MB**, ~405,000 rows  
-- **Ignored by Git** (too large for a 25 MB submission)  
-- Keep your copy locally for full-scale tests  
+with the following value:
 
-To load the full file:
-
-```bash
-# in .env
-DATA_FILE=data/iot_telemetry_data.csv
+```env
+DATA_FILE=data/sample_iot_telemetry_data.csv
 ```
 
-Then run `load_data.py` as usual.
+During execution, the loader reads the CSV file in configurable batches, validates and transforms each row, adds data-quality metadata, and writes the resulting documents to MongoDB.
 
----
+## Dataset Source
 
-## Why two files?
+The sample is based on the public Environmental Sensor Telemetry Data dataset from Kaggle:
 
-The portfolio submission must stay **under 25 MB**. The sample proves the pipeline works; the full CSV is optional for local development.
+```text
+https://www.kaggle.com/datasets/garystafford/environmental-sensor-data-132k
+```
+
+## Reproducibility Note
+
+The submitted repository includes the sample CSV so that the pipeline can be reproduced locally with Docker Compose. No additional dataset download is required for the portfolio demonstration.
